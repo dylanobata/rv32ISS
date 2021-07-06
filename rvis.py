@@ -132,8 +132,8 @@ def decode(instruction):
     imm_B = sign_extend(instruction[0], (bin(instruction[0]) + bin(instruction[24]) + instruction[1:7] + instruction[20:24]) << 1) # shift left to access even locations only
     imm_U = sign_extend(instruction[0], instruction[0:20] << 12) 
     imm_J = sign_extend(instruction[0], (bin(instruction[0]) + instruction[12:20] + bin(instruction[11]) + instruction[1:11]) << 1) 
-    print(instruction.bin, opcode)
-    print("Opcode:", opcode, "rd:", rd, "rs1", src1, "rs2:", src2, "funct3:", funct3, "funct7:", funct7, "imm_I:", imm_I, "imm_S:", imm_S, "imm_B:", imm_B, "imm_U:", imm_U, "imm_J:", imm_J)
+    #print(instruction.bin, opcode)
+    #print("Opcode:", opcode, "rd:", rd, "rs1", src1, "rs2:", src2, "funct3:", funct3, "funct7:", funct7, "imm_I:", imm_I, "imm_S:", imm_S, "imm_B:", imm_B, "imm_U:", imm_U, "imm_J:", imm_J)
     return opcode, rd, src1, src2, funct3, funct7, imm_I, imm_S, imm_B, imm_U, imm_J
   
 
@@ -205,12 +205,8 @@ def execute(opcode, rs1, rs2, funct3, funct7, imm_I, imm_S, imm_B, imm_U, imm_J,
         if funct3 != Funct3.ECALL:
             return None 
         if funct3 == Funct3.ECALL:
-            print("  ecall", regfile[3])
-            if regfile[3] > 1:
-                raise Exception("FAILURE IN TEST")
-            elif regfile[3] == 1:
-                # hack for test exit
-                return False
+        # hack for test exit
+            return False
     return int(ALUOut)
 
 
@@ -249,7 +245,7 @@ def cycle() -> bool:
         instruction = fetch(regfile[PC] + 0x174)
     else:
         instruction = fetch(regfile[PC])
-    print(instruction)
+    #print(instruction)
     instruction_count += 1
     # Decode
     opcode, rd, src1, src2, funct3, funct7, I, S, B, U, J = decode(instruction) 
@@ -257,11 +253,11 @@ def cycle() -> bool:
     PCNext = regfile[PC] + 4
     mem_op = opcode in {Opcode.LOAD, Opcode.STORE} # check if need to store in memory
     write_op = opcode in {Opcode.LOAD, Opcode.OP, Opcode.IMM, Opcode.LUI, Opcode.JAL, Opcode.JALR, Opcode.AUIPC}  # check if need to write to memory
-    print(opcode, rd, funct3, funct7, I, S, B, U, J)
+    #print(opcode, rd, funct3, funct7, I, S, B, U, J)
  
     # Execute
     ALUOut = execute(opcode, src1, src2, funct3, funct7, I, S, B, U, J, returnPC)
-    print(ALUOut) 
+    #print(ALUOut) 
     
     # Memory access
     if mem_op:
@@ -273,14 +269,19 @@ def cycle() -> bool:
             write_back(rd, MEMregister)
         else:
             write_back(rd, ALUOut)
-    hart_dump()
+    #hart_dump()
 
     # Calculate PC
     if opcode in {Opcode.BRANCH, Opcode.JAL, Opcode.JALR, Opcode.AUIPC}:
        regfile[PC] = ALUOut 
     else:
         regfile[PC] = PCNext 
-    return True
+    
+    # test if program is done 
+    if ALUOut == False and type(ALUOut) == bool:
+        return False
+    else:
+        return True
 
 
 if __name__ == "__main__":
@@ -299,5 +300,13 @@ if __name__ == "__main__":
             instruction_count = 0 
             while cycle():
                 instruction_count += 1
-            print("  ran %d instructions" % instruction_count) 
-            exit(0)
+            
+            instruction = fetch(regfile[PC] + 0x174)
+            print(hex(regfile[PC] + 0x174))
+            print(instruction.hex)
+            if instruction.hex == 'c0001073':
+                print("PASS") 
+            else:
+                print("FAIL")
+            print("ran %d instructions\n" % instruction_count) 
+            #exit(0)
