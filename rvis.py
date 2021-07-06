@@ -71,11 +71,8 @@ class Regfile():
     def __setitem__(self, key, value):
         if key == 0: # x0 register is always 0
             return
-        elif key == PC:
+        else:
             self.registers[key] = value & 0xFFFFFFFF # store only the lowest 4 bytes
-        else:    
-            value = value & 0xFFFFFFFF # store only the lowest 4 bytes
-            self.registers[key] = BitArray(value.to_bytes(4, "big"))
 
 
 # GLOBAL VARIABLES
@@ -98,16 +95,20 @@ def loader(data, address):
 
 
 def hart_dump():
-    reg_names = ["x" + str(i) for i in range(32)] + ["PC"] 
+    reg_names = \
+        ['x0', 'ra', 'sp', 'gp', 'tp'] + ['t%d'%i for i in range(0,3)] + ['s0', 's1'] +\
+        ['a%d'%i for i in range(0,8)] +\
+        ['s%d'%i for i in range(2,12)] +\
+        ['t%d'%i for i in range(3,7)] + ["PC"]
     file = [] 
     for i in range(len(reg_names)):
         if i != 0 and i % 8 == 0:
             file += "\n"
-        if type(regfile[i]) == int:
-            file += " %4s:0x%08x" % (reg_names[i], regfile[i])
+        if type(regfile[i] == int) and i == 32:
+            file += " %4s:0x%08x" % (reg_names[i], (regfile[i] + 0x174))
         else:
-            file += " %4s:0x%08x" % (reg_names[i], regfile[i].int)
-    print(''.join(file))
+            file += " %4s:0x%08x" % (reg_names[i], regfile[i])
+    print(''.join(file), '\n')
 
 
 def sign_extend(sign, bits): 
@@ -126,13 +127,13 @@ def decode(instruction):
     src2 = instruction[7:12] # read rs2 into temp register
     funct3 = instruction[17:20]
     funct7 = instruction[0:7]
-    imm_I = sign_extend(instruction[0], instruction[0:11])
+    imm_I = sign_extend(instruction[0], instruction[0:12])
     imm_S = sign_extend(instruction[0], instruction[0:7] + instruction[20:25])
     imm_B = sign_extend(instruction[0], (bin(instruction[0]) + bin(instruction[24]) + instruction[1:7] + instruction[20:24]) << 1) # shift left to access even locations only
     imm_U = sign_extend(instruction[0], instruction[0:20] << 12) 
     imm_J = sign_extend(instruction[0], (bin(instruction[0]) + instruction[12:20] + bin(instruction[11]) + instruction[1:11]) << 1) 
     print(instruction.bin, opcode)
-    print(opcode, rd, src1, src2, funct3, funct7, imm_I, imm_S, imm_B, imm_U, imm_J)
+    print("Opcode:", opcode, "rd:", rd, "rs1", src1, "rs2:", src2, "funct3:", funct3, "funct7:", funct7, "imm_I:", imm_I, "imm_S:", imm_S, "imm_B:", imm_B, "imm_U:", imm_U, "imm_J:", imm_J)
     return opcode, rd, src1, src2, funct3, funct7, imm_I, imm_S, imm_B, imm_U, imm_J
   
 
@@ -140,35 +141,36 @@ def execute(opcode, rs1, rs2, funct3, funct7, imm_I, imm_S, imm_B, imm_U, imm_J,
     
     def arithmetic(funct3, src1, src2, funct7=None):
         if funct3 == Funct3.ADD: # Add, AddI, Sub
-            return src1.int - src2.int if funct7 == Funct7.SUB else src1.int + src2.int 
+            return src1 - src2 if funct7 == Funct7.SUB else src1 + src2
         if funct3 == Funct3.AND: # And, AndI
-            return src1.int & src2.int
+            return src1 & src2
         if funct3 == Funct3.OR: # Or, OrI
-            return src1.int | src2.int
+            return src1 | src2
         if funct3 == Funct3.XOR: # Xor, XorI
-            return src1.int ^ src2.int
+            return src1 ^ src2
         if funct3 == Funct3.SRL: # srl, srli, sra, srai
-            return (src1 >> src2.int).int if funct7 == Funct7.SRL else src1.int >> src2.int # sra, srai 
+            return (src1 >> src2) if funct7 == Funct7.SRL else src1 >> src2 # sra, srai 
         if funct3 == Funct3.SLL: # sll, slli
-            return src1.int << src2.int
+            return src1 << src2
         if funct3 == Funct3.SLT: # slt, slti
-            return 1 if src1.int << src2.int else 0 
+            return 1 if src1 < src2 else 0 
         if funct3 == Funct3.SLTU:
-            return 1 if src.uint << src2.uint else 0
+            return 1 if src1 < src2 else 0
+            
     
     def logic(funct3, src1, src2, imm_B, returnPC):
         if funct3 == Funct3.BEQ:
-            return returnPC + imm_B.int if src1 == src2 else returnPC + 4 
+            return returnPC + imm_B if src1 == src2 else returnPC + 4 
         if funct3 == Funct3.BNE:
-            return returnPC + imm_B.int if src1 != src2 else returnPC + 4 
+            return returnPC + imm_B if src1 != src2 else returnPC + 4 
         if funct3 == Funct3.BLT:
-            return returnPC + imm_B.int if src1.int < src2.int else returnPC + 4 
+            return returnPC + imm_B if src1 < src2 else returnPC + 4 
         if funct3 == Funct3.BGE:
-            return returnPC + imm_B.int if src1.int >= src2.int else returnPC + 4 
+            return returnPC + imm_B if src1 >= src2 else returnPC + 4 
         if funct3 == Funct3.BLTU:
-            return returnPC + imm_B.int if src1.uint < src2.uint else returnPC + 4
+            return returnPC + imm_B if src1 < src2 else returnPC + 4
         if funct3 == Funct3.BGEU:
-            return returnPC + imm_B.int if src1.uint >= src2.uint else returnPC + 4
+            return returnPC + imm_B if src1 >= src2 else returnPC + 4
             
     if opcode == Opcode.LUI:
         ALUOut = (imm_U + BitArray('0x0000')).int
@@ -177,25 +179,25 @@ def execute(opcode, rs1, rs2, funct3, funct7, imm_I, imm_S, imm_B, imm_U, imm_J,
     elif opcode == Opcode.JAL:
         ALUOut = returnPC + imm_J.int
     elif opcode == Opcode.JALR:
-        ALUOut = int(arithmetic(Funct3.ADD, rs1, imm_I))
+        ALUOut = int(arithmetic(Funct3.ADD, regfile[rs1.uint], imm_I.int))
     elif opcode == Opcode.BRANCH:
         funct3 = Funct3(funct3)
-        ALUOut = int(logic(funct3, rs1, rs2, imm_B, returnPC))
+        ALUOut = int(logic(funct3, regfile[rs1.uint], regfile[rs2.uint], imm_B.int, returnPC))
     elif opcode == Opcode.LOAD:
-        ALUOut = int(arithmetic(Funct3.ADD, rs1, imm_I)) 
+        ALUOut = int(arithmetic(Funct3.ADD, regfile[rs1.uint], imm_I.int)) 
     elif opcode == Opcode.STORE:
-        ALUOut = int(arithmetic(Funct3.ADD, rs1, imm_S))
+        ALUOut = int(arithmetic(Funct3.ADD, regfile[rs1.uint], imm_S.int))
     elif opcode == Opcode.IMM:
         funct3 = Funct3(funct3)
         if funct3 in {Funct3.SLLI, Funct3.SRLI, Funct3.SRAI}:
             funct7 = Funct7(funct7)
         else:
             funct7 = None
-        ALUOut = int(arithmetic(funct3=funct3, funct7=funct7, src1=rs1, src2=imm_I))
+        ALUOut = int(arithmetic(funct3=funct3, funct7=funct7, src1=regfile[rs1.uint], src2=imm_I.int))
     elif opcode == Opcode.OP:
         funct3 = Funct3(funct3)
         funct7 = Funct7(funct7)
-        ALUOut = int(arithmetic(funct3=funct3, funct7=funct7, src1=rs1, src2=rs2))
+        ALUOut = int(arithmetic(funct3=funct3, funct7=funct7, src1=regfile[rs1.uint], src2=regfile[rs2.uint]))
     elif opcode == Opcode.MISCMEM:
         return None 
     elif opcode == Opcode.SYSTEM:
@@ -242,9 +244,13 @@ def write_back(rd, write_data):
 
 def cycle() -> bool:
     # Fetch
-    instruction = fetch(regfile[PC])
+    instruction_count = 0
+    if instruction_count == 0:
+        instruction = fetch(regfile[PC] + 0x174)
+    else:
+        instruction = fetch(regfile[PC])
     print(instruction)
-
+    instruction_count += 1
     # Decode
     opcode, rd, src1, src2, funct3, funct7, I, S, B, U, J = decode(instruction) 
     returnPC = regfile[PC] # set up return address for PC
