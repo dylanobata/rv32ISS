@@ -105,7 +105,7 @@ def hart_dump():
         if i != 0 and i % 8 == 0:
             file += "\n"
         if type(regfile[i] == int) and i == 32:
-            file += " %4s:0x%08x" % (reg_names[i], (regfile[i] + 0x174))
+            file += " %4s:0x%08x" % (reg_names[i], regfile[i])
         else:
             file += " %4s:0x%08x" % (reg_names[i], regfile[i])
     print(''.join(file), '\n')
@@ -130,10 +130,10 @@ def decode(instruction):
     imm_I = sign_extend(instruction[0], instruction[0:12])
     imm_S = sign_extend(instruction[0], instruction[0:7] + instruction[20:25])
     imm_B = sign_extend(instruction[0], (bin(instruction[0]) + bin(instruction[24]) + instruction[1:7] + instruction[20:24]) << 1) # shift left to access even locations only
-    imm_U = sign_extend(instruction[0], instruction[0:20] << 12) 
+    imm_U = instruction[0:20] + BitArray('0x0000') 
     imm_J = sign_extend(instruction[0], (bin(instruction[0]) + instruction[12:20] + bin(instruction[11]) + instruction[1:11]) << 1) 
-    #print(instruction.bin, opcode)
-    #print("Opcode:", opcode, "rd:", rd, "rs1", src1, "rs2:", src2, "funct3:", funct3, "funct7:", funct7, "imm_I:", imm_I, "imm_S:", imm_S, "imm_B:", imm_B, "imm_U:", imm_U, "imm_J:", imm_J)
+    print(instruction.bin, opcode)
+    print("Opcode:", opcode, "rd:", rd, "rs1", src1, "rs2:", src2, "funct3:", funct3, "funct7:", funct7, "imm_I:", imm_I, "imm_S:", imm_S, "imm_B:", imm_B, "imm_U:", imm_U, "imm_J:", imm_J)
     return opcode, rd, src1, src2, funct3, funct7, imm_I, imm_S, imm_B, imm_U, imm_J
   
 
@@ -173,7 +173,7 @@ def execute(opcode, rs1, rs2, funct3, funct7, imm_I, imm_S, imm_B, imm_U, imm_J,
             return returnPC + imm_B if src1 >= src2 else returnPC + 4
             
     if opcode == Opcode.LUI:
-        ALUOut = (imm_U + BitArray('0x0000')).int
+        ALUOut = (imm_U).int
     elif opcode == Opcode.AUIPC:
         ALUOut = returnPC + imm_U.int 
     elif opcode == Opcode.JAL:
@@ -240,13 +240,9 @@ def write_back(rd, write_data):
 
 def cycle() -> bool:
     # Fetch
-    instruction_count = 0
-    if instruction_count == 0:
-        instruction = fetch(regfile[PC] + 0x174)
-    else:
-        instruction = fetch(regfile[PC])
-    #print(instruction)
-    instruction_count += 1
+    instruction = fetch(regfile[PC])
+    print(instruction)
+    
     # Decode
     opcode, rd, src1, src2, funct3, funct7, I, S, B, U, J = decode(instruction) 
     returnPC = regfile[PC] # set up return address for PC
@@ -257,7 +253,7 @@ def cycle() -> bool:
  
     # Execute
     ALUOut = execute(opcode, src1, src2, funct3, funct7, I, S, B, U, J, returnPC)
-    #print(ALUOut) 
+    print(ALUOut) 
     
     # Memory access
     if mem_op:
@@ -269,7 +265,7 @@ def cycle() -> bool:
             write_back(rd, MEMregister)
         else:
             write_back(rd, ALUOut)
-    #hart_dump()
+    hart_dump()
 
     # Calculate PC
     if opcode in {Opcode.BRANCH, Opcode.JAL, Opcode.JALR, Opcode.AUIPC}:
@@ -285,7 +281,7 @@ def cycle() -> bool:
 
 
 if __name__ == "__main__":
-    for test_file in sorted(glob.glob("riscv-tests/isa/rv32ui-p-*")):
+    for test_file in sorted(glob.glob("riscv-tests/isa/rv32ui-p-addi")):
         if test_file.endswith('.dump'):
             continue
         with open(test_file, 'rb') as f:
@@ -298,15 +294,16 @@ if __name__ == "__main__":
                 loader(segment.data(), segment.header.p_paddr) 
            #     print(memory[:len(segment.data())]) 
             instruction_count = 0 
+            regfile[PC] = 0x80000174 # skip straight to instruction tests, ignoring csr instructions 
             while cycle():
                 instruction_count += 1
-            
-            instruction = fetch(regfile[PC] + 0x174)
-            print(hex(regfile[PC] + 0x174))
+             
+            instruction = fetch(regfile[PC])
+            print(hex(regfile[PC]))
             print(instruction.hex)
             if instruction.hex == 'c0001073':
                 print("PASS") 
             else:
                 print("FAIL")
             print("ran %d instructions\n" % instruction_count) 
-            #exit(0)
+            exit(0)
