@@ -133,7 +133,6 @@ def decode(instruction):
     imm_U = instruction[0:20] + BitArray('0x000') 
     imm_J = sign_extend(instruction[0], (bin(instruction[0]) + instruction[12:20] + bin(instruction[11]) + instruction[1:11]) << 1) 
     print(instruction.bin, opcode)
-    print("Opcode:", opcode, "rd:", rd, "rs1", src1, "rs2:", src2, "funct3:", funct3, "funct7:", funct7, "imm_I:", imm_I, "imm_S:", imm_S, "imm_B:", imm_B, "imm_U:", imm_U, "imm_J:", imm_J)
     return opcode, rd, src1, src2, funct3, funct7, imm_I, imm_S, imm_B, imm_U, imm_J
   
 
@@ -245,6 +244,7 @@ def cycle() -> bool:
     
     # Decode
     opcode, rd, src1, src2, funct3, funct7, I, S, B, U, J = decode(instruction) 
+    print("Opcode:", opcode, "rd:", rd, "rs1", src1, "rs2:", src2, "funct3:", funct3, "funct7:", funct7, "imm_I:", I, "imm_S:", S, "imm_B:", B, "imm_U:", U, "imm_J:", J)
     returnPC = regfile[PC] # set up return address for PC
     PCNext = regfile[PC] + 4
     mem_op = opcode in {Opcode.LOAD, Opcode.STORE} # check if need to store in memory
@@ -268,7 +268,7 @@ def cycle() -> bool:
     hart_dump()
 
     # Calculate PC
-    if opcode in {Opcode.BRANCH, Opcode.JAL, Opcode.JALR, Opcode.AUIPC}:
+    if opcode in {Opcode.BRANCH, Opcode.JAL, Opcode.JALR}:
        regfile[PC] = ALUOut 
     else:
         regfile[PC] = PCNext 
