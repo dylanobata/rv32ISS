@@ -132,7 +132,7 @@ def decode(instruction):
     imm_B = sign_extend(instruction[0], (bin(instruction[0]) + bin(instruction[24]) + instruction[1:7] + instruction[20:24]) << 1) # shift left to access even locations only
     imm_U = instruction[0:20] + BitArray('0x000') 
     imm_J = sign_extend(instruction[0], (bin(instruction[0]) + instruction[12:20] + bin(instruction[11]) + instruction[1:11]) << 1) 
-    print(instruction.bin, opcode)
+    #print(instruction.bin, opcode)
     return opcode, rd, src1, src2, funct3, funct7, imm_I, imm_S, imm_B, imm_U, imm_J
   
 
@@ -163,13 +163,13 @@ def execute(opcode, rs1, rs2, funct3, funct7, imm_I, imm_S, imm_B, imm_U, imm_J,
         if funct3 == Funct3.BNE:
             return returnPC + imm_B if src1 != src2 else returnPC + 4 
         if funct3 == Funct3.BLT:
-            return returnPC + imm_B if src1 < src2 else returnPC + 4 
+            return returnPC + imm_B if src1.int < src2.int else returnPC + 4 
         if funct3 == Funct3.BGE:
-            return returnPC + imm_B if src1 >= src2 else returnPC + 4 
+            return returnPC + imm_B if src1.int >= src2.int else returnPC + 4 
         if funct3 == Funct3.BLTU:
-            return returnPC + imm_B if src1 < src2 else returnPC + 4
+            return returnPC + imm_B if src1.uint < src2.uint else returnPC + 4
         if funct3 == Funct3.BGEU:
-            return returnPC + imm_B if src1 >= src2 else returnPC + 4
+            return returnPC + imm_B if src1.uint >= src2.uint else returnPC + 4
             
     if opcode == Opcode.LUI:
         ALUOut = (imm_U).int
@@ -181,7 +181,7 @@ def execute(opcode, rs1, rs2, funct3, funct7, imm_I, imm_S, imm_B, imm_U, imm_J,
         ALUOut = int(arithmetic(Funct3.ADD, regfile[rs1.uint], imm_I.int))
     elif opcode == Opcode.BRANCH:
         funct3 = Funct3(funct3)
-        ALUOut = int(logic(funct3, regfile[rs1.uint], regfile[rs2.uint], imm_B.int, returnPC))
+        ALUOut = int(logic(funct3, BitArray(hex(regfile[rs1.uint])), BitArray(hex(regfile[rs2.uint])), imm_B.int, returnPC))
     elif opcode == Opcode.LOAD:
         ALUOut = int(arithmetic(Funct3.ADD, regfile[rs1.uint], imm_I.int)) 
     elif opcode == Opcode.STORE:
@@ -240,20 +240,19 @@ def write_back(rd, write_data):
 def cycle() -> bool:
     # Fetch
     instruction = fetch(regfile[PC])
-    print(instruction)
+    #print(instruction)
     
     # Decode
     opcode, rd, src1, src2, funct3, funct7, I, S, B, U, J = decode(instruction) 
-    print("Opcode:", opcode, "rd:", rd, "rs1", src1, "rs2:", src2, "funct3:", funct3, "funct7:", funct7, "imm_I:", I, "imm_S:", S, "imm_B:", B, "imm_U:", U, "imm_J:", J)
+    #print("Opcode:", opcode, "rd:", rd, "rs1", src1, "rs2:", src2, "funct3:", funct3, "funct7:", funct7, "imm_I:", I, "imm_S:", S, "imm_B:", B, "imm_U:", U, "imm_J:", J)
     returnPC = regfile[PC] # set up return address for PC
     PCNext = regfile[PC] + 4
     mem_op = opcode in {Opcode.LOAD, Opcode.STORE} # check if need to store in memory
     write_op = opcode in {Opcode.LOAD, Opcode.OP, Opcode.IMM, Opcode.LUI, Opcode.JAL, Opcode.JALR, Opcode.AUIPC}  # check if need to write to memory
-    #print(opcode, rd, funct3, funct7, I, S, B, U, J)
  
     # Execute
     ALUOut = execute(opcode, src1, src2, funct3, funct7, I, S, B, U, J, returnPC)
-    print(ALUOut) 
+    #if ALUOut != None: print('ALUOut', hex(ALUOut)) 
     
     # Memory access
     if mem_op:
@@ -265,7 +264,7 @@ def cycle() -> bool:
             write_back(rd, MEMregister)
         else:
             write_back(rd, ALUOut)
-    hart_dump()
+    #hart_dump()
 
     # Calculate PC
     if opcode in {Opcode.BRANCH, Opcode.JAL, Opcode.JALR}:
@@ -281,7 +280,7 @@ def cycle() -> bool:
 
 
 if __name__ == "__main__":
-    for test_file in sorted(glob.glob("riscv-tests/isa/rv32ui-p-auipc")):
+    for test_file in sorted(glob.glob("riscv-tests/isa/rv32ui-p-*")):
         if test_file.endswith('.dump'):
             continue
         with open(test_file, 'rb') as f:
@@ -306,4 +305,4 @@ if __name__ == "__main__":
             else:
                 print("FAIL")
             print("ran %d instructions\n" % instruction_count) 
-            exit(0)
+            #exit(0)
