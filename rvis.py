@@ -159,9 +159,9 @@ def execute(opcode, rs1, rs2, funct3, funct7, imm_I, imm_S, imm_B, imm_U, imm_J,
     
     def logic(funct3, src1, src2, imm_B, returnPC):
         if funct3 == Funct3.BEQ:
-            return returnPC + imm_B if src1 == src2 else returnPC + 4 
+            return returnPC + imm_B if src1.int == src2.int else returnPC + 4 
         if funct3 == Funct3.BNE:
-            return returnPC + imm_B if src1 != src2 else returnPC + 4 
+            return returnPC + imm_B if src1.int != src2.int else returnPC + 4 
         if funct3 == Funct3.BLT:
             return returnPC + imm_B if src1.int < src2.int else returnPC + 4 
         if funct3 == Funct3.BGE:
@@ -219,18 +219,18 @@ def memory_access(opcode, funct3, ALUOut, rs2):
         elif funct3 == Funct3.SW:
             loader(rs2 & 0xFFFFFFFF, ALUOut)
     elif opcode == Opcode.LOAD: 
-        data = fetch(ALUOut).int
+        data = fetch(ALUOut)
         if funct3 == Funct3.LB:
-            MEMregister = sign_extend(data[0], data & 0xFF) 
+            MEMregister = sign_extend(data[0], data & '0x000000FF') 
         elif funct3 == Funct3.LBU:
-            MEMregister = sign_extend(0, data & 0xFF) 
+            MEMregister = sign_extend(0, data & '0x000000FF') 
         elif funct3 == Funct3.LHU:
-            MEMregister = sign_extend(0, data & 0xFFFF) 
+            MEMregister = sign_extend(0, data & '0x0000FFFF') 
         elif funct3 == Funct3.LH:
-            MEMregister = sign_extend(data[0], data & 0xFFFF) 
+            MEMregister = sign_extend(data[0], data & '0x0000FFFF') 
         elif funct3 == Funct3.LW:
-            MEMregister = sign_extend(data[0], data & 0xFFFFFFFF) 
-    return MEMregister
+            MEMregister = sign_extend(data[0], data & '0xFFFFFFFF')
+    return MEMregister.int
 
 
 def write_back(rd, write_data):
@@ -256,19 +256,21 @@ def cycle() -> bool:
     
     # Memory access
     if mem_op:
-      MEMregister = memory_access(Funct3(funct3), ALUOut, src2) 
+      MEMregister = memory_access(opcode, Funct3(funct3), ALUOut, src2) 
     
     # Write back
     if write_op:
         if opcode == Opcode.LOAD:
             write_back(rd, MEMregister)
+        elif opcode in {Opcode.JAL, Opcode.JALR}:
+            write_back(rd, regfile[PC]+4)
         else:
             write_back(rd, ALUOut)
     #hart_dump()
 
     # Calculate PC
     if opcode in {Opcode.BRANCH, Opcode.JAL, Opcode.JALR}:
-       regfile[PC] = ALUOut 
+       regfile[PC] = ALUOut   
     else:
         regfile[PC] = PCNext 
     
@@ -281,7 +283,7 @@ def cycle() -> bool:
 
 if __name__ == "__main__":
     for test_file in sorted(glob.glob("riscv-tests/isa/rv32ui-p-*")):
-        if test_file.endswith('.dump'):
+        if test_file.endswith('.dump') or test_file.endswith('fence_i'):
             continue
         with open(test_file, 'rb') as f:
             elf_file = ELFFile(f)
