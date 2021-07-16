@@ -148,9 +148,9 @@ def execute(opcode, rs1, rs2, funct3, funct7, imm_I, imm_S, imm_B, imm_U, imm_J,
         if funct3 == Funct3.XOR: # Xor, XorI
             return src1 ^ src2
         if funct3 == Funct3.SRL: # srl, srli, sra, srai
-            return (src1 >> src2) if funct7 == Funct7.SRL else src1 >> src2 # sra, srai 
+            return src1 >> (src2 % 32) if funct7 == Funct7.SRL else BitArray(hex(src1)).int >> (src2 % 32) # sra, srai 
         if funct3 == Funct3.SLL: # sll, slli
-            return src1 << src2
+            return src1 << (src2 % 32) # max shift amount is in range [0,31] bits
         if funct3 == Funct3.SLT: # slt, slti
             return 1 if src1 < src2 else 0 
         if funct3 == Funct3.SLTU:
@@ -190,9 +190,10 @@ def execute(opcode, rs1, rs2, funct3, funct7, imm_I, imm_S, imm_B, imm_U, imm_J,
         funct3 = Funct3(funct3)
         if funct3 in {Funct3.SLLI, Funct3.SRLI, Funct3.SRAI}:
             funct7 = Funct7(funct7)
+            ALUOut = int(arithmetic(funct3=funct3, funct7=funct7, src1=regfile[rs1.uint], src2=rs2.uint))
         else:
             funct7 = None
-        ALUOut = int(arithmetic(funct3=funct3, funct7=funct7, src1=regfile[rs1.uint], src2=imm_I.int))
+            ALUOut = int(arithmetic(funct3=funct3, funct7=funct7, src1=regfile[rs1.uint], src2=imm_I.int))
     elif opcode == Opcode.OP:
         funct3 = Funct3(funct3)
         funct7 = Funct7(funct7)
@@ -209,15 +210,16 @@ def execute(opcode, rs1, rs2, funct3, funct7, imm_I, imm_S, imm_B, imm_U, imm_J,
     return int(ALUOut)
 
 
-def memory_access(opcode, funct3, ALUOut, rs2):
+def memory_access(opcode, funct3, ALUOut, src2):
     if opcode == Opcode.STORE:
         MEMregister = None
         if funct3 == Funct3.SB:
-            loader(rs2 & 0xFF, ALUOut)
+            loader((src2 & 0xff).to_bytes(1,byteorder='little'), ALUOut)
         elif funct3 == Funct3.SH: 
-            loader(rs2 & 0xFFFF, ALUOut)
+            loader((src2 & 0xffff).to_bytes(2,byteorder='little'), ALUOut)
         elif funct3 == Funct3.SW:
-            loader(rs2 & 0xFFFFFFFF, ALUOut)
+            loader((src2 & 0xffffffff).to_bytes(4,byteorder='little') , ALUOut)
+        return MEMregister
     elif opcode == Opcode.LOAD: 
         data = fetch(ALUOut)
         if funct3 == Funct3.LB:
@@ -230,7 +232,7 @@ def memory_access(opcode, funct3, ALUOut, rs2):
             MEMregister = sign_extend(data[0], data & '0x0000FFFF') 
         elif funct3 == Funct3.LW:
             MEMregister = sign_extend(data[0], data & '0xFFFFFFFF')
-    return MEMregister.int
+        return MEMregister.int
 
 
 def write_back(rd, write_data):
@@ -256,7 +258,7 @@ def cycle() -> bool:
     
     # Memory access
     if mem_op:
-      MEMregister = memory_access(opcode, Funct3(funct3), ALUOut, src2) 
+      MEMregister = memory_access(opcode, Funct3(funct3), ALUOut, regfile[src2.uint]) 
     
     # Write back
     if write_op:
