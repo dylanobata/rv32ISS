@@ -152,11 +152,20 @@ def execute(opcode, rs1, rs2, funct3, funct7, imm_I, imm_S, imm_B, imm_U, imm_J,
         if funct3 == Funct3.SLL: # sll, slli
             return src1 << (src2 % 32) # max shift amount is in range [0,31] bits
         if funct3 == Funct3.SLT: # slt, slti
-            return 1 if src1 < src2 else 0 
+            #print("src1: ", src1, "src2: ", src2)
+            src1 = BitArray(hex(src1 & 0xFFFFFFFF))
+            src2 = BitArray(hex(src2 & 0xFFFFFFFF))
+            src1 = BitArray(sign_extend(0, src1))
+            src2 = BitArray(sign_extend(0, src2))
+            return 1 if src1.int < src2.int else 0 
         if funct3 == Funct3.SLTU:
-            return 1 if src1 < src2 else 0
-            
-    
+            #print("src1: ", src1, "src2: ", src2)
+            src1 = BitArray(hex(src1 & 0xFFFFFFFF))
+            src2 = BitArray(hex(src2 & 0xFFFFFFFF))
+            src1 = BitArray(sign_extend(0, src1))
+            src2 = BitArray(sign_extend(0, src2))
+            return 1 if src1.uint < src2.uint else 0 
+
     def logic(funct3, src1, src2, imm_B, returnPC):
         if funct3 == Funct3.BEQ:
             return returnPC + imm_B if src1.int == src2.int else returnPC + 4 
@@ -295,7 +304,6 @@ if __name__ == "__main__":
             # ELF loader loads program into memory at location 0x80000000 
             for segment in elf_file.iter_segments(): 
                 loader(segment.data(), segment.header.p_paddr) 
-           #     print(memory[:len(segment.data())]) 
             instruction_count = 0 
             regfile[PC] = 0x80000174 # skip straight to instruction tests, ignoring csr instructions 
             while cycle():
