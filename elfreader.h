@@ -2,6 +2,8 @@
 #define ELFREADER
 
 #include <elf.h>
+#include <stddef.h>
+
 typedef unsigned char byte;
 typedef uint32_t word;
 
@@ -13,5 +15,6 @@ typedef struct {
     long length;
 } ELFinfo;
 
-ELFinfo read_elf(const char* elf_file);
+ELFinfo read_elf(const char*);
+byte* get_segment_data(ELFinfo, size_t);
 #endif

@@ -16,8 +16,6 @@ ELFinfo read_elf(const char* elf_file) {
            fseek(file, info.header.e_phoff + sizeof(Elf32_Phdr)*i, SEEK_SET);
            fread(&info.pheader[i], sizeof(Elf32_Phdr), 1, file);
         }
-        //fseek(file, info.header.e_phoff, SEEK_SET); // set file to position of program header identified by e_phoff 
-        //fread(&info.pheader, sizeof(info.pheader), 1, file); // read program header starting at e_phoff
         if (memcmp(info.header.e_ident, ELFMAG, SELFMAG) == 0) { // check if it's an elf file
             fseek(file, 0, SEEK_END); // look for end of elf to get length in bytes
             info.length = ftell(file); // set length of elf file
@@ -34,3 +32,10 @@ ELFinfo read_elf(const char* elf_file) {
     return info;
 }
 
+byte* get_segment_data(ELFinfo elf, size_t segment_num) {
+    byte* segment_buffer;
+    segment_buffer = malloc(elf.pheader[segment_num].p_filesz);
+    for (uint32_t i=0; i<elf.pheader[segment_num].p_filesz; ++i)
+        segment_buffer[i] = elf.buffer[elf.pheader[segment_num].p_offset + i];
+    return segment_buffer;
+}
