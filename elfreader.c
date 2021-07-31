@@ -1,0 +1,36 @@
+#include "elfreader.h"
+#include <elf.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+ELFinfo read_elf(const char* elf_file) {
+    ELFinfo info;
+    info.buffer = NULL;
+    FILE* file = fopen(elf_file, "rb");
+    if(file) {
+        fread(&info.header, sizeof(info.header), 1, file); // read file header, which starts at 0x0
+        info.pheader = malloc(sizeof(Elf32_Phdr)*info.header.e_phnum);
+        info.num_pheaders = info.header.e_phnum;
+        for (uint16_t i=0; i<info.num_pheaders; ++i) {
+           fseek(file, info.header.e_phoff + sizeof(Elf32_Phdr)*i, SEEK_SET);
+           fread(&info.pheader[i], sizeof(Elf32_Phdr), 1, file);
+        }
+        //fseek(file, info.header.e_phoff, SEEK_SET); // set file to position of program header identified by e_phoff 
+        //fread(&info.pheader, sizeof(info.pheader), 1, file); // read program header starting at e_phoff
+        if (memcmp(info.header.e_ident, ELFMAG, SELFMAG) == 0) { // check if it's an elf file
+            fseek(file, 0, SEEK_END); // look for end of elf to get length in bytes
+            info.length = ftell(file); // set length of elf file
+            fseek(file, 0, SEEK_SET);
+            info.buffer = malloc(info.length);
+            if (info.buffer) {
+                fread(info.buffer, 1, info.length, file);
+            }
+        }
+        else
+            exit(EXIT_FAILURE);
+    }
+    fclose(file);
+    return info;
+}
+
