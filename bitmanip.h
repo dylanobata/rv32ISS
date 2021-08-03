@@ -3,11 +3,9 @@
 
 #include <stdint.h>
 
-uint8_t get_bit(uint32_t bits, uint8_t position) {
-    // position indexed at 0 ending at 31 
-    position %= 32; // if position >= 32 wrap around
-    bits = bits >> position;
-    return bits & 0x1;
+int32_t get_bits(uint32_t bits, uint8_t start, uint8_t end) {
+    // returns bits from [start, end) 
+    return (bits >> end) & ((1 << (start-end+1))-1); 
 }
 
 int32_t sign_extend(uint32_t bits, unsigned num_bits) {
