@@ -2,6 +2,7 @@
 #define BITMANIP
 
 #include <stdint.h>
+#include <stdio.h>
 
 int32_t get_bits(uint32_t bits, uint8_t start, uint8_t end) {
     // returns bits from [start, end) 
@@ -22,4 +23,10 @@ void print_binary(uint32_t bits)
     printf("\n"); 
 }
 
+
+int main() {
+    int b = 0b1010;
+    print_binary(get_bits(b,3,4));
+    return 0;
+}
 #endif
