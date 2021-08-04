@@ -70,20 +70,22 @@ bitfields decode(word instruction) {
     encoding.funct7 = instruction & FUNCT7;
     encoding.Itype = sign_extend((instruction & ITYPE) >> 20, 12);
     encoding.Stype = sign_extend(((instruction & STYPE_U) >> 20) |  ((instruction & STYPE_L) >> 7), 12);
-    encoding.Btype = sign_extend((get_bits(1,32,instruction)<<12 | get_bits(1,8,instruction)<<11| get_bits(6,26,instruction)<<5 | get_bits(4,9,instruction)<<1), 13);
+    encoding.Btype = sign_extend((get_bits(1,32,instruction)<<12 | get_bits(1,8,instruction)<<11 | get_bits(6,26,instruction)<<5 | get_bits(4,9,instruction)<<1), 13);
     encoding.Utype = instruction & UTYPE;
     encoding.Jtype = sign_extend((get_bits(1,32,instruction)<<20 | get_bits(8,13,instruction)<<12 | get_bits(1,21,instruction)<<11 | get_bits(10,22,instruction)<<1), 21);
     
-    //printf("Opcode: 0x%02x rd: 0x%02x funct3: 0x%01x rs1: 0x%02x rs2:  0x%02x funct7: 0x%02x\n", 
-           encoding.opcode, encoding.rd, encoding.funct3, encoding.rs1, encoding.rs2, encoding.funct7);
-    //printf("I: 0x%08x S: 0x%08x B: 0x%08x U: 0x%08x J: 0x%08x\n",
-           encoding.Itype, encoding.Stype, encoding.Btype, encoding.Utype, encoding.Jtype);
+   //printf("Opcode: 0x%02x rd: 0x%02x funct3: 0x%01x rs1: 0x%02x rs2:  0x%02x funct7: 0x%02x\n", 
+   //       encoding.opcode, encoding.rd, encoding.funct3, encoding.rs1, encoding.rs2, encoding.funct7);
+   //printf("I: 0x%08x S: 0x%08x B: 0x%08x U: 0x%08x J: 0x%08x\n",
+   //        encoding.Itype, encoding.Stype, encoding.Btype, encoding.Utype, encoding.Jtype);
     return encoding;
 }
 
+
+
 bool cycle(ELFinfo elf) {
     word instr = 0; 
-    instr = fetch(elf, regfile[PC]);
+    instr = fetch(elf,regfile[PC]);
     regfile[PC] += 4;
     bitfields encoding = decode(instr); 
     hart_dump();
