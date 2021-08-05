@@ -46,8 +46,9 @@ void loader(ELFinfo elf, byte* segment_data, unsigned short segment_num) {
         memory[address] = segment_data[address]; 
 }
 
-word fetch(ELFinfo elf, word address) {
-    address -= elf.header.e_entry; // calculate offset to index memory array
+word fetch(Elf32_Addr entry) {
+    word address = regfile[PC]; 
+    address -= entry; // calculate offset to index memory array
     word instruction = 0; // instruction of length 32 bits
     word instruction_bytes[4]; 
     for (int i = 0; i < 4; ++i) {
@@ -63,41 +64,215 @@ word fetch(ELFinfo elf, word address) {
 bitfields decode(word instruction) {
     bitfields encoding = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
     encoding.opcode = instruction & OPCODE;
-    encoding.rd = instruction & RD;
-    encoding.funct3 = instruction & FUNCT3;
-    encoding.rs1 = instruction & RS1;
-    encoding.rs2 = instruction & RS2;
-    encoding.funct7 = instruction & FUNCT7;
+    encoding.rd = (instruction & RD) >> 7;
+    encoding.funct3 = (instruction & FUNCT3) >> 12;
+    encoding.rs1 = (instruction & RS1) >> 15;
+    encoding.rs2 = (instruction & RS2) >> 20;
+    encoding.funct7 = (instruction & FUNCT7) >> 25;
     encoding.Itype = sign_extend((instruction & ITYPE) >> 20, 12);
     encoding.Stype = sign_extend(((instruction & STYPE_U) >> 20) |  ((instruction & STYPE_L) >> 7), 12);
     encoding.Btype = sign_extend((get_bits(1,32,instruction)<<12 | get_bits(1,8,instruction)<<11 | get_bits(6,26,instruction)<<5 | get_bits(4,9,instruction)<<1), 13);
     encoding.Utype = instruction & UTYPE;
     encoding.Jtype = sign_extend((get_bits(1,32,instruction)<<20 | get_bits(8,13,instruction)<<12 | get_bits(1,21,instruction)<<11 | get_bits(10,22,instruction)<<1), 21);
     
-   //printf("Opcode: 0x%02x rd: 0x%02x funct3: 0x%01x rs1: 0x%02x rs2:  0x%02x funct7: 0x%02x\n", 
-   //       encoding.opcode, encoding.rd, encoding.funct3, encoding.rs1, encoding.rs2, encoding.funct7);
-   //printf("I: 0x%08x S: 0x%08x B: 0x%08x U: 0x%08x J: 0x%08x\n",
-   //        encoding.Itype, encoding.Stype, encoding.Btype, encoding.Utype, encoding.Jtype);
+   printf("Opcode: 0x%02x rd: 0x%02x rs1: 0x%02x rs2:  0x%02x funct3: 0x%01x funct7: 0x%02x\n", 
+          encoding.opcode, encoding.rd, encoding.rs1, encoding.rs2, encoding.funct3,  encoding.funct7);
+   printf("I: 0x%08x S: 0x%08x B: 0x%08x U: 0x%08x J: 0x%08x\n",
+           encoding.Itype, encoding.Stype, encoding.Btype, encoding.Utype, encoding.Jtype);
     return encoding;
 }
 
+word arithmetic(bitfields encoding, word src2) { // src2 is either a 2nd register or an immediate 
+    switch (encoding.funct3) {
+        case F3_ADD: 
+            if (encoding.funct7 == F7_SUB)
+                return regfile[encoding.rs1] - src2;
+            else return regfile[encoding.rs1] + src2;
+        case F3_AND:
+            return regfile[encoding.rs1] & src2;
+        case F3_OR:
+            return regfile[encoding.rs1] | src2;
+        case F3_XOR:
+            return regfile[encoding.rs1] ^ src2;
+        case F3_SRL:
+            if (encoding.funct7 == F7_SRL)
+                return regfile[encoding.rs1] >> (src2 % 32);
+            else
+                return (int32_t)regfile[encoding.rs1] >> (src2 % 32); // sra and srai
+        case F3_SLL:
+            return regfile[encoding.rs1] << (src2 % 32);
+        case F3_SLT:
+            if ((int32_t)regfile[encoding.rs1] < (int32_t)src2)
+                return 1;
+            else return 0;
+        case F3_SLTU:
+            if (regfile[encoding.rs1] < src2)
+                return 1;
+            else return 0; 
+        default:
+            return 0;
+    }
+}
 
+word logic(bitfields encoding) {
+    switch (encoding.funct3) {
+        case F3_BEQ:
+            if ((int32_t)regfile[encoding.rs1] == (int32_t)regfile[encoding.rs2])
+                return regfile[PC] + encoding.Btype;
+            else return regfile[PC] + 4;
+        case F3_BNE:
+            if ((int32_t)regfile[encoding.rs1] != (int32_t)regfile[encoding.rs2])
+                return regfile[PC] + encoding.Btype;
+            else return regfile[PC] + 4;
+        case F3_BLT:
+            if ((int32_t)regfile[encoding.rs1] < (int32_t)regfile[encoding.rs2])
+                return regfile[PC] + encoding.Btype;
+            else return regfile[PC] + 4;
+        case F3_BGE:
+            if ((int32_t)regfile[encoding.rs1] > (int32_t)regfile[encoding.rs2])
+                return regfile[PC] + encoding.Btype;
+            else return regfile[PC] + 4;
+        case F3_BLTU:
+            if (regfile[encoding.rs1] < regfile[encoding.rs2])
+                return regfile[PC] + encoding.Btype;
+            else return regfile[PC] + 4;
+        case F3_BGEU:
+            if (regfile[encoding.rs1] > regfile[encoding.rs2])
+                return regfile[PC] + encoding.Btype;
+            else return regfile[PC] + 4;
+        default:
+            return 0;
+    }
+}
+
+word execute(bitfields encoding) {
+    switch (encoding.opcode) {
+        case LUI:
+            return (int32_t)encoding.Utype; 
+             
+        case AUIPC:
+            return regfile[PC] + (int32_t)encoding.Utype; 
+        
+        case JAL:
+            return regfile[PC] + (int32_t)encoding.Jtype; 
+        
+        case JALR:
+            return arithmetic(encoding, encoding.Itype);
+        
+        case BRANCH:
+            return logic(encoding); 
+        
+        case LOAD:
+            return arithmetic(encoding, encoding.Itype);
+
+        case STORE:
+            return arithmetic(encoding, encoding.Stype); 
+        
+        case IMM:
+            if (encoding.funct3 == F3_SLLI || encoding.funct3 == F3_SRLI || encoding.funct3 == F3_SRAI)
+                return arithmetic(encoding, regfile[encoding.rs2]); 
+            else return arithmetic(encoding, encoding.Itype);
+        case OP:
+            return arithmetic(encoding, regfile[encoding.rs2]);  
+        case MISCMEM:
+            return 0; 
+
+        case SYSTEM:
+            return 0;  
+        default:
+            return 0;
+    } 
+}
+
+void load_byte(ELFinfo elf, word address, byte ALUout) {
+    address -= elf.header.e_entry; // calculate offset
+    if (address < 0 || address > MEM_SZ)
+        exit(EXIT_FAILURE);
+    memory[address] = ALUout; 
+}
+
+word memory_access(ELFinfo elf, bitfields encoding, word ALUout) {
+    word MEMregister = 0; 
+    if (encoding.opcode == STORE) {
+        if (encoding.funct3 == F3_SB)
+           load_byte(elf, ALUout, (encoding.rs2 & 0xFF)); 
+        else if (encoding.funct3 == F3_SH) {
+           load_byte(elf, ALUout, (encoding.rs2 & 0x00FF));
+           load_byte(elf, ALUout + 1, (encoding.rs2 & 0xFF00) >> 8); 
+        }
+        else if (encoding.funct3 == F3_SW) {
+            load_byte(elf, ALUout, (encoding.rs2 & 0xFF));
+            load_byte(elf, ALUout, (encoding.rs2 & 0xFF00));
+            load_byte(elf, ALUout, (encoding.rs2 & 0x00FF0000));
+            load_byte(elf, ALUout, (encoding.rs2 & 0xFF000000));
+        }
+    }
+    else {
+        word data = fetch(ALUout);
+        if (encoding.funct3 == F3_LB)
+            MEMregister = sign_extend((int32_t)data & 0xFF, 8);  
+        else if (encoding.funct3 == F3_LBU)
+            MEMregister = sign_extend(data, 8);
+        else if (encoding.funct3 == F3_LHU)
+            MEMregister = sign_extend(data & 0xFFFF, 16);
+        else if (encoding.funct3 == F3_LH)
+            MEMregister = sign_extend((int32_t)data & 0xFFFF, 16);
+        else if (encoding.funct3 == F3_LW) 
+            MEMregister = sign_extend((int32_t)data & 0xFFFFFFFF, 32); 
+    }
+    return MEMregister;
+    
+}
+
+void write_back(bitfields encoding, word ALUout) {
+    regfile[encoding.rd] = ALUout;
+}
 
 bool cycle(ELFinfo elf) {
-    word instr = 0; 
-    instr = fetch(elf,regfile[PC]);
-    regfile[PC] += 4;
-    bitfields encoding = decode(instr); 
+    // fetch  
+    word instr = fetch(elf.header.e_entry);
+    printf("Instr: %x\n", instr);    
+    // decode
+    bitfields encoding = decode(instr);
+     
+    // execute
+    word ALUout = execute(encoding);
     hart_dump();
-    return false;
+    printf("ALUout: %x\n", ALUout);   
+    // memory access
+    word MEMregister = 0;
+    if (encoding.opcode == LOAD || encoding.opcode == STORE){ 
+        MEMregister = memory_access(elf, encoding, ALUout);
+        printf("%x\n", MEMregister);
+    }
+
+    // write back
+    if (encoding.opcode == LOAD || encoding.opcode == OP || encoding.opcode == IMM || 
+        encoding.opcode == LUI || encoding.opcode == JAL || encoding.opcode == JALR || encoding.opcode == AUIPC) {
+        if (encoding.opcode == LOAD) 
+            write_back(encoding, MEMregister);
+        else if (encoding.opcode == JAL || encoding.opcode == JALR) 
+            write_back(encoding, regfile[PC] + 4);
+        else {
+            write_back(encoding, ALUout);
+            printf("rd: %x\n\n\n", encoding.rd);
+        }
+    }
+    
+    regfile[0] = 0; // x0 is always 0
+     
+    // PC calculation
+    if (encoding.opcode == BRANCH || encoding.opcode == JAL || encoding.opcode == JALR)
+        regfile[PC] = ALUout;
+    else regfile[PC] += 4;
+    if (encoding.opcode == SYSTEM && encoding.funct3 == F3_ECALL) 
+        return false;
+    else return true;
 }
 
 int main(){
-    char elf_file[] = "riscv-tests/isa/rv32ui-p-beq";
+    char elf_file[] = "riscv-tests/isa/rv32ui-p-bge";
     ELFinfo elf = read_elf(elf_file);
-    for (int i=0; i<elf.num_pheaders; ++i)
-        printf("%x\n", elf.header.e_entry);
-    
     byte* segments_data[elf.header.e_phnum];
     for (size_t i = 0; i<elf.header.e_phnum; ++i) {
         segments_data[i] = get_segment_data(elf, i); 
@@ -113,12 +288,20 @@ int main(){
     */
     regfile[PC] = 0x80000174;
     unsigned int instr_count = 0; 
-    for (int i=0; i<150; ++i)
-        cycle(elf);
-    //while(cycle(elf)){
-    //    instr_count += 1;
-    ////}
-
+    //for (int i=0; i<150; ++i)
+    //    cycle(elf);
+    while(cycle(elf)){
+        instr_count += 1;
+    }
+    word instr = fetch(regfile[PC]);
+    printf("PC: %x\n", regfile[PC]); 
+    printf("INSTR: %x\n", instr);
+    if (instr == 0xC001073)
+        puts("PASS");
+    else
+        puts("FAIL");
+    printf("Ran: %d instructions\n", instr_count);
+    
     free(elf.pheader);
     free(elf.buffer);
     for (int i=0; i<elf.num_pheaders; ++i)
