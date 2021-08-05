@@ -170,7 +170,7 @@ word execute(bitfields encoding) {
         
         case IMM:
             if (encoding.funct3 == F3_SLLI || encoding.funct3 == F3_SRLI || encoding.funct3 == F3_SRAI)
-                return arithmetic(encoding, regfile[encoding.rs2]); 
+                return arithmetic(encoding, encoding.rs2); 
             else return arithmetic(encoding, encoding.Itype);
         case OP:
             return arithmetic(encoding, regfile[encoding.rs2]);  
@@ -271,7 +271,7 @@ bool cycle(ELFinfo elf) {
 }
 
 int main(){
-    char elf_file[] = "riscv-tests/isa/rv32ui-p-xori";
+    char elf_file[] = "riscv-tests/isa/rv32ui-p-srli";
     ELFinfo elf = read_elf(elf_file);
     byte* segments_data[elf.header.e_phnum];
     for (size_t i = 0; i<elf.header.e_phnum; ++i) {
