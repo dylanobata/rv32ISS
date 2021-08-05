@@ -129,7 +129,7 @@ word logic(bitfields encoding) {
                 return regfile[PC] + encoding.Btype;
             else return regfile[PC] + 4;
         case F3_BGE:
-            if ((int32_t)regfile[encoding.rs1] > (int32_t)regfile[encoding.rs2])
+            if ((int32_t)regfile[encoding.rs1] >= (int32_t)regfile[encoding.rs2])
                 return regfile[PC] + encoding.Btype;
             else return regfile[PC] + 4;
         case F3_BLTU:
@@ -137,7 +137,7 @@ word logic(bitfields encoding) {
                 return regfile[PC] + encoding.Btype;
             else return regfile[PC] + 4;
         case F3_BGEU:
-            if (regfile[encoding.rs1] > regfile[encoding.rs2])
+            if (regfile[encoding.rs1] >= regfile[encoding.rs2])
                 return regfile[PC] + encoding.Btype;
             else return regfile[PC] + 4;
         default:
@@ -271,7 +271,7 @@ bool cycle(ELFinfo elf) {
 }
 
 int main(){
-    char elf_file[] = "riscv-tests/isa/rv32ui-p-bge";
+    char elf_file[] = "riscv-tests/isa/rv32ui-p-xori";
     ELFinfo elf = read_elf(elf_file);
     byte* segments_data[elf.header.e_phnum];
     for (size_t i = 0; i<elf.header.e_phnum; ++i) {
@@ -296,10 +296,6 @@ int main(){
     word instr = fetch(regfile[PC]);
     printf("PC: %x\n", regfile[PC]); 
     printf("INSTR: %x\n", instr);
-    if (instr == 0xC001073)
-        puts("PASS");
-    else
-        puts("FAIL");
     printf("Ran: %d instructions\n", instr_count);
     
     free(elf.pheader);
