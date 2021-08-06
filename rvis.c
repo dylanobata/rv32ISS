@@ -40,8 +40,10 @@ void hart_dump() {
 void loader(ELFinfo elf, byte* segment_data, unsigned short segment_num) {
     Elf32_Addr address = elf.pheader[segment_num].p_paddr; 
     address -= elf.header.e_entry; // calculate offset
-    if (address < 0 || address > MEM_SZ)
-         exit(EXIT_FAILURE); 
+    if (address < 0 || address > MEM_SZ) {
+         puts("LOAD FAIL"); 
+         exit(EXIT_FAILURE);
+    }
     printf("Address: %x\n", address); 
     for (size_t i=0; i < elf.pheader[segment_num].p_filesz; ++address, ++i) {
         memory[address] = segment_data[i];
@@ -54,8 +56,10 @@ word fetch(word address, Elf32_Addr entry) {
     address -= entry; // calculate offset to index memory array
     word instruction = 0; // instruction of length 32 bits
     word instruction_bytes[4];
-    if (address < 0 || address > MEM_SZ)
+    if (address < 0 || address > MEM_SZ) {
+        puts("FETCH FAILED"); 
         exit(EXIT_FAILURE);
+    }
     for (int i = 0; i < 4; ++i) {
         instruction_bytes[i] = memory[address + i];
         //printf("instr: %x\n", instruction_bytes[i]);
@@ -82,8 +86,8 @@ bitfields decode(word instruction) {
     return encoding;
 }
 
-word arithmetic(bitfields encoding, word src2) { // src2 is either a 2nd register or an immediate 
-    switch (encoding.funct3) {
+word arithmetic(word funct3, bitfields encoding, word src2) { // src2 is either a 2nd register or an immediate 
+    switch (funct3) {
         case F3_ADD: 
             if (encoding.funct7 == F7_SUB)
                 return regfile[encoding.rs1] - src2;
@@ -157,23 +161,23 @@ word execute(bitfields encoding) {
             return regfile[PC] + (int32_t)encoding.Jtype; 
         
         case JALR:
-            return arithmetic(encoding, encoding.Itype);
+            return arithmetic(encoding.funct3, encoding, encoding.Itype);
         
         case BRANCH:
             return logic(encoding); 
         
         case LOAD:
-            return arithmetic(encoding, encoding.Itype);
+            return arithmetic(F3_ADD, encoding, encoding.Itype);
 
         case STORE:
-            return arithmetic(encoding, encoding.Stype); 
+            return arithmetic(F3_ADD, encoding, encoding.Stype); 
         
         case IMM:
             if (encoding.funct3 == F3_SLLI || encoding.funct3 == F3_SRLI || encoding.funct3 == F3_SRAI)
-                return arithmetic(encoding, encoding.rs2); 
-            else return arithmetic(encoding, encoding.Itype);
+                return arithmetic(encoding.funct3, encoding, encoding.rs2); 
+            else return arithmetic(encoding.funct3, encoding, encoding.Itype);
         case OP:
-            return arithmetic(encoding, regfile[encoding.rs2]);  
+            return arithmetic(encoding.funct3, encoding, regfile[encoding.rs2]);  
         case MISCMEM:
             return 0; 
 
@@ -186,8 +190,10 @@ word execute(bitfields encoding) {
 
 void load_byte(ELFinfo elf, word address, byte ALUout) {
     address -= elf.header.e_entry; // calculate offset
-    if (address < 0 || address > MEM_SZ)
+    if (address < 0 || address > MEM_SZ) {
+        puts("LOAD_BYTE FAILED"); 
         exit(EXIT_FAILURE);
+    }
     memory[address] = ALUout; 
 }
 
@@ -213,13 +219,13 @@ word memory_access(ELFinfo elf, bitfields encoding, word ALUout) {
         if (encoding.funct3 == F3_LB)
             MEMregister = sign_extend((int32_t)data & 0xFF, 8);  
         else if (encoding.funct3 == F3_LBU)
-            MEMregister = sign_extend(data, 8);
+            MEMregister = (byte)data;
         else if (encoding.funct3 == F3_LHU)
-            MEMregister = sign_extend(data & 0xFFFF, 16);
+            MEMregister = data & 0xFFFF;
         else if (encoding.funct3 == F3_LH)
             MEMregister = sign_extend((int32_t)data & 0xFFFF, 16);
         else if (encoding.funct3 == F3_LW) 
-            MEMregister = sign_extend((int32_t)data & 0xFFFFFFFF, 32); 
+            MEMregister = (int32_t)data; 
     }
     return MEMregister;
     
@@ -277,7 +283,7 @@ bool cycle(ELFinfo elf) {
 }
 
 int main(){
-    char elf_file[] = "riscv-tests/isa/rv32ui-p-lb";
+    char elf_file[] = "riscv-tests/isa/rv32ui-p-sb";
     ELFinfo elf = read_elf(elf_file);
     byte* segments_data[elf.header.e_phnum];
     for (size_t i = 0; i<elf.header.e_phnum; ++i) {
