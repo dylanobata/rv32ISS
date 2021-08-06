@@ -38,19 +38,24 @@ void hart_dump() {
 }
 
 void loader(ELFinfo elf, byte* segment_data, unsigned short segment_num) {
-   Elf32_Addr address = elf.pheader[segment_num].p_paddr; 
-   address -= elf.header.e_entry; // calculate offset
-   if (address < 0 || address > MEM_SZ)
-        exit(EXIT_FAILURE); 
-   for (; address < elf.pheader[segment_num].p_filesz; ++address)
-        memory[address] = segment_data[address]; 
+    Elf32_Addr address = elf.pheader[segment_num].p_paddr; 
+    address -= elf.header.e_entry; // calculate offset
+    if (address < 0 || address > MEM_SZ)
+         exit(EXIT_FAILURE); 
+    printf("Address: %x\n", address); 
+    for (size_t i=0; i < elf.pheader[segment_num].p_filesz; ++address, ++i) {
+        memory[address] = segment_data[i];
+   }
+   puts("\n");
 }
 
-word fetch(Elf32_Addr entry) {
-    word address = regfile[PC]; 
+word fetch(word address, Elf32_Addr entry) {
+    //word address = regfile[PC]; 
     address -= entry; // calculate offset to index memory array
     word instruction = 0; // instruction of length 32 bits
-    word instruction_bytes[4]; 
+    word instruction_bytes[4];
+    if (address < 0 || address > MEM_SZ)
+        exit(EXIT_FAILURE);
     for (int i = 0; i < 4; ++i) {
         instruction_bytes[i] = memory[address + i];
         //printf("instr: %x\n", instruction_bytes[i]);
@@ -74,11 +79,6 @@ bitfields decode(word instruction) {
     encoding.Btype = sign_extend((get_bits(1,32,instruction)<<12 | get_bits(1,8,instruction)<<11 | get_bits(6,26,instruction)<<5 | get_bits(4,9,instruction)<<1), 13);
     encoding.Utype = instruction & UTYPE;
     encoding.Jtype = sign_extend((get_bits(1,32,instruction)<<20 | get_bits(8,13,instruction)<<12 | get_bits(1,21,instruction)<<11 | get_bits(10,22,instruction)<<1), 21);
-    
-   printf("Opcode: 0x%02x rd: 0x%02x rs1: 0x%02x rs2:  0x%02x funct3: 0x%01x funct7: 0x%02x\n", 
-          encoding.opcode, encoding.rd, encoding.rs1, encoding.rs2, encoding.funct3,  encoding.funct7);
-   printf("I: 0x%08x S: 0x%08x B: 0x%08x U: 0x%08x J: 0x%08x\n",
-           encoding.Itype, encoding.Stype, encoding.Btype, encoding.Utype, encoding.Jtype);
     return encoding;
 }
 
@@ -208,7 +208,8 @@ word memory_access(ELFinfo elf, bitfields encoding, word ALUout) {
         }
     }
     else {
-        word data = fetch(ALUout);
+        word data = fetch(ALUout, elf.header.e_entry);
+        printf("DATA: %x\n", data);
         if (encoding.funct3 == F3_LB)
             MEMregister = sign_extend((int32_t)data & 0xFF, 8);  
         else if (encoding.funct3 == F3_LBU)
@@ -230,20 +231,25 @@ void write_back(bitfields encoding, word ALUout) {
 
 bool cycle(ELFinfo elf) {
     // fetch  
-    word instr = fetch(elf.header.e_entry);
+    word instr = fetch(regfile[PC], elf.header.e_entry);
     printf("Instr: %x\n", instr);    
     // decode
     bitfields encoding = decode(instr);
+    printf("Opcode: 0x%02x rd: 0x%02x rs1: 0x%02x rs2:  0x%02x funct3: 0x%01x funct7: 0x%02x\n", 
+        encoding.opcode, encoding.rd, encoding.rs1, encoding.rs2, encoding.funct3,  encoding.funct7);
+    printf("I: 0x%08x S: 0x%08x B: 0x%08x U: 0x%08x J: 0x%08x\n",
+        encoding.Itype, encoding.Stype, encoding.Btype, encoding.Utype, encoding.Jtype);
      
     // execute
     word ALUout = execute(encoding);
     hart_dump();
     printf("ALUout: %x\n", ALUout);   
+    
     // memory access
     word MEMregister = 0;
     if (encoding.opcode == LOAD || encoding.opcode == STORE){ 
         MEMregister = memory_access(elf, encoding, ALUout);
-        printf("%x\n", MEMregister);
+        printf("MEMregister: %x\n", MEMregister);
     }
 
     // write back
@@ -271,33 +277,38 @@ bool cycle(ELFinfo elf) {
 }
 
 int main(){
-    char elf_file[] = "riscv-tests/isa/rv32ui-p-srli";
+    char elf_file[] = "riscv-tests/isa/rv32ui-p-lb";
     ELFinfo elf = read_elf(elf_file);
     byte* segments_data[elf.header.e_phnum];
     for (size_t i = 0; i<elf.header.e_phnum; ++i) {
         segments_data[i] = get_segment_data(elf, i); 
         loader(elf, segments_data[i], i);
     }
-    /*
+    /* 
     for (int i=0; i<elf.pheader[0].p_filesz; ++i) 
         printf("%0hhx", memory[i]); 
-    puts("\n");
-    for (int i=0; i<elf.pheader[1].p_filesz; ++i) 
-        printf("%0hhx", memory[elf.pheader[0].p_filesz + i]); 
-    puts("\n");
-    */
+    puts("\n"); */
+//    for (int i=0; i<elf.pheader[1].p_filesz; ++i) 
+//        printf("%0hhx", memory[elf.pheader[0].p_filesz + i]); 
+//    puts("\n");
+   
+
+//    for (int i=0; i<elf.pheader[1].p_filesz; ++i)
+//        printf("%0hhx", segments_data[1][i]);
+//    puts("\n");
     regfile[PC] = 0x80000174;
     unsigned int instr_count = 0; 
-    //for (int i=0; i<150; ++i)
-    //    cycle(elf);
     while(cycle(elf)){
         instr_count += 1;
     }
-    word instr = fetch(regfile[PC]);
-    printf("PC: %x\n", regfile[PC]); 
-    printf("INSTR: %x\n", instr);
+    //word instr = fetch(regfile[PC], elf.header.e_entry);
+    //printf("PC: %x\n", regfile[PC]); 
+    //printf("INSTR: %x\n", instr);
     printf("Ran: %d instructions\n", instr_count);
-    
+    //printf("MEMORY: %x\n", memory[0x1000]); 
+    //for (int i=0; i<0x2050; i++)
+    //    printf("ADDRESS: %x    Value: %x\n", i+0x80000000, memory[i]);
+
     free(elf.pheader);
     free(elf.buffer);
     for (int i=0; i<elf.num_pheaders; ++i)
