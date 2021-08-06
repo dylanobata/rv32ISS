@@ -33,7 +33,7 @@ void hart_dump() {
             puts("\n");
         printf("%s:0x%08x\t", reg_names[i], regfile[i]);
         if (i == 32)
-            puts("\n");
+            puts("\n\n");
     }
 }
 
@@ -55,7 +55,7 @@ word fetch(word address, Elf32_Addr entry) {
     //word address = regfile[PC]; 
     address -= entry; // calculate offset to index memory array
     word instruction = 0; // instruction of length 32 bits
-    word instruction_bytes[4];
+    word instruction_bytes[4]; // instructions come in 4 bytes for 32 bit arch
     if (address < 0 || address > MEM_SZ) {
         puts("FETCH FAILED"); 
         exit(EXIT_FAILURE);
@@ -71,6 +71,7 @@ word fetch(word address, Elf32_Addr entry) {
 }
 
 bitfields decode(word instruction) {
+// decode instruction following RISC-V 32 bit instruction format
     bitfields encoding = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
     encoding.opcode = instruction & OPCODE;
     encoding.rd = (instruction & RD) >> 7;
@@ -200,30 +201,32 @@ void load_byte(ELFinfo elf, word address, byte ALUout) {
 word memory_access(ELFinfo elf, bitfields encoding, word ALUout) {
     word MEMregister = 0; 
     if (encoding.opcode == STORE) {
-        if (encoding.funct3 == F3_SB)
-           load_byte(elf, ALUout, (encoding.rs2 & 0xFF)); 
-        else if (encoding.funct3 == F3_SH) {
-           load_byte(elf, ALUout, (encoding.rs2 & 0x00FF));
-           load_byte(elf, ALUout + 1, (encoding.rs2 & 0xFF00) >> 8); 
-        }
-        else if (encoding.funct3 == F3_SW) {
-            load_byte(elf, ALUout, (encoding.rs2 & 0xFF));
-            load_byte(elf, ALUout, (encoding.rs2 & 0xFF00));
-            load_byte(elf, ALUout, (encoding.rs2 & 0x00FF0000));
-            load_byte(elf, ALUout, (encoding.rs2 & 0xFF000000));
-        }
+        if (encoding.funct3 == F3_SB) 
+           load_byte(elf, ALUout, (regfile[encoding.rs2] & 0xFF)); 
+         
+        else if (encoding.funct3 == F3_SH) 
+            for (unsigned char i=0; i<4; ++i)
+                load_byte(elf, ALUout + i, ((regfile[encoding.rs2] & (0xFF << i*8)) >> i*8));
+        
+        else if (encoding.funct3 == F3_SW) 
+            for (unsigned char i=0; i<4; ++i)
+                load_byte(elf, ALUout + i, ((regfile[encoding.rs2] & (0xFF << i*8)) >> i*8));
     }
     else {
         word data = fetch(ALUout, elf.header.e_entry);
         printf("DATA: %x\n", data);
         if (encoding.funct3 == F3_LB)
             MEMregister = sign_extend((int32_t)data & 0xFF, 8);  
+        
         else if (encoding.funct3 == F3_LBU)
             MEMregister = (byte)data;
+        
         else if (encoding.funct3 == F3_LHU)
             MEMregister = data & 0xFFFF;
+        
         else if (encoding.funct3 == F3_LH)
             MEMregister = sign_extend((int32_t)data & 0xFFFF, 16);
+        
         else if (encoding.funct3 == F3_LW) 
             MEMregister = (int32_t)data; 
     }
@@ -239,6 +242,7 @@ bool cycle(ELFinfo elf) {
     // fetch  
     word instr = fetch(regfile[PC], elf.header.e_entry);
     printf("Instr: %x\n", instr);    
+    
     // decode
     bitfields encoding = decode(instr);
     printf("Opcode: 0x%02x rd: 0x%02x rs1: 0x%02x rs2:  0x%02x funct3: 0x%01x funct7: 0x%02x\n", 
@@ -248,7 +252,6 @@ bool cycle(ELFinfo elf) {
      
     // execute
     word ALUout = execute(encoding);
-    hart_dump();
     printf("ALUout: %x\n", ALUout);   
     
     // memory access
@@ -261,29 +264,34 @@ bool cycle(ELFinfo elf) {
     // write back
     if (encoding.opcode == LOAD || encoding.opcode == OP || encoding.opcode == IMM || 
         encoding.opcode == LUI || encoding.opcode == JAL || encoding.opcode == JALR || encoding.opcode == AUIPC) {
+        
         if (encoding.opcode == LOAD) 
             write_back(encoding, MEMregister);
+        
         else if (encoding.opcode == JAL || encoding.opcode == JALR) 
             write_back(encoding, regfile[PC] + 4);
+        
         else {
             write_back(encoding, ALUout);
-            printf("rd: %x\n\n\n", encoding.rd);
         }
     }
     
+    // show register content
+    hart_dump();
     regfile[0] = 0; // x0 is always 0
      
     // PC calculation
     if (encoding.opcode == BRANCH || encoding.opcode == JAL || encoding.opcode == JALR)
         regfile[PC] = ALUout;
     else regfile[PC] += 4;
+    
     if (encoding.opcode == SYSTEM && encoding.funct3 == F3_ECALL) 
         return false;
     else return true;
 }
 
 int main(){
-    char elf_file[] = "riscv-tests/isa/rv32ui-p-sb";
+    char elf_file[] = "riscv-tests/isa/rv32ui-p-xori";
     ELFinfo elf = read_elf(elf_file);
     byte* segments_data[elf.header.e_phnum];
     for (size_t i = 0; i<elf.header.e_phnum; ++i) {
