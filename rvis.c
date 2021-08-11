@@ -6,7 +6,7 @@
 
 //custom headers
 #include "elfreader.h" // contains get_segment_data() and Elfinfo data type
-#include "rv32.h"
+#include "rv32.h" // bitfields data type 
 #include "bitmanip.h" // contains sign_extend() and get_bit()
 
 #define PC 32 // program counter is index 32 in regfile
@@ -62,7 +62,6 @@ word fetch(word address, Elf32_Addr entry) {
     }
     for (int i = 0; i < 4; ++i) {
         instruction_bytes[i] = memory[address + i];
-        //printf("instr: %x\n", instruction_bytes[i]);
         instruction_bytes[i] = instruction_bytes[i] << (i*8); // shift i bytes 
         instruction += instruction_bytes[i]; 
     }
@@ -156,7 +155,7 @@ word execute(bitfields encoding) {
             return (int32_t)encoding.Utype; 
              
         case AUIPC:
-            return regfile[PC] + (int32_t)encoding.Utype; 
+            //return regfile[PC] + (int32_t)encoding.Utype; 
         
         case JAL:
             return regfile[PC] + (int32_t)encoding.Jtype; 
@@ -177,13 +176,16 @@ word execute(bitfields encoding) {
             if (encoding.funct3 == F3_SLLI || encoding.funct3 == F3_SRLI || encoding.funct3 == F3_SRAI)
                 return arithmetic(encoding.funct3, encoding, encoding.rs2); 
             else return arithmetic(encoding.funct3, encoding, encoding.Itype);
+        
         case OP:
             return arithmetic(encoding.funct3, encoding, regfile[encoding.rs2]);  
+        
         case MISCMEM:
             return 0; 
 
         case SYSTEM:
             return 0;  
+        
         default:
             return 0;
     } 
@@ -236,6 +238,7 @@ word memory_access(ELFinfo elf, bitfields encoding, word ALUout) {
 
 void write_back(bitfields encoding, word ALUout) {
     regfile[encoding.rd] = ALUout;
+    regfile[0] = 0; // x0 is always 0 
 }
 
 bool cycle(ELFinfo elf) {
@@ -278,8 +281,7 @@ bool cycle(ELFinfo elf) {
     
     // show register content
     hart_dump();
-    regfile[0] = 0; // x0 is always 0
-     
+    
     // PC calculation
     if (encoding.opcode == BRANCH || encoding.opcode == JAL || encoding.opcode == JALR)
         regfile[PC] = ALUout;
@@ -291,7 +293,7 @@ bool cycle(ELFinfo elf) {
 }
 
 int main(){
-    char elf_file[] = "riscv-tests/isa/rv32ui-p-xori";
+    char elf_file[] = "riscv-tests/isa/rv32ui-p-sh";
     ELFinfo elf = read_elf(elf_file);
     byte* segments_data[elf.header.e_phnum];
     for (size_t i = 0; i<elf.header.e_phnum; ++i) {
