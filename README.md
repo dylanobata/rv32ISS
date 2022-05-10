@@ -3,5 +3,8 @@ Simulates the RISC-V base integer instruction set architecture as outlined in th
 
 # Getting Started
 ## Prerequisites
-  -riscv-gnu-toolchain
+  * riscv-gnu-toolchain
 
+```
+brew install riscv-gnu-toolchain
+```
